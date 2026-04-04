@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OverstockArt Order Recovery</title>
+  <style>
+    :root {
+      --blue: #1a56db;
+      --blue-light: #e8f0fe;
+      --green: #057a55;
+      --green-light: #def7ec;
+      --yellow: #c27803;
+      --yellow-light: #fdf6b2;
+      --red: #c81e1e;
+      --red-light: #fde8e8;
+      --purple: #6c2bd9;
+      --purple-light: #edebfe;
+      --gray: #6b7280;
+      --gray-light: #f9fafb;
+      --border: #e5e7eb;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; color: #111827; min-height: 100vh; }
+
+    /* ── Header ── */
+    header { background: #1e293b; color: #fff; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+    header h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    header span { font-size: 12px; color: #94a3b8; margin-left: 8px; }
+    .header-right { display: flex; gap: 10px; align-items: center; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; text-decoration: none; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: #1749b8; }
+    .btn-ghost { background: rgba(255,255,255,.1); color: #fff; }
+    .btn-ghost:hover { background: rgba(255,255,255,.18); }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* ── Layout ── */
+    main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* ── Stats Cards ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+    .stat-label { font-size: 12px; color: var(--gray); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+    .stat-sub { font-size: 12px; color: var(--gray); margin-top: 4px; }
+    .stat-card.green .stat-value { color: var(--green); }
+    .stat-card.blue .stat-value { color: var(--blue); }
+    .stat-card.yellow .stat-value { color: var(--yellow); }
+    .stat-card.red .stat-value { color: var(--red); }
+    .stat-card.purple .stat-value { color: var(--purple); }
+
+    /* ── Follow-up Alert Bar ── */
+    .followup-bar { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; box-shadow: var(--shadow); }
+    .followup-bar h3 { font-size: 13px; font-weight: 600; color: #374151; margin-right: 4px; }
+    .fu-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+    .fu-badge.day1 { background: var(--blue-light); color: var(--blue); }
+    .fu-badge.day3 { background: var(--yellow-light); color: var(--yellow); }
+    .fu-badge.day7 { background: var(--red-light); color: var(--red); }
+    .fu-badge:hover { opacity: .8; }
+
+    /* ── Filters Row ── */
+    .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .search-input { flex: 1; min-width: 220px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; background: #fff; }
+    .search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.1); }
+    select.filter-select { padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: #fff; cursor: pointer; outline: none; color: #374151; }
+    select.filter-select:focus { border-color: var(--blue); }
+
+    /* ── Table ── */
+    .table-wrap { background: #fff; border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; }
+    .table-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .table-title { font-size: 14px; font-weight: 600; color: #374151; }
+    .table-count { font-size: 12px; color: var(--gray); }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--gray); background: var(--gray-light); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    .text-muted { color: var(--gray); font-size: 12px; }
+    .customer-name { font-weight: 600; color: #111827; }
+    .customer-email { color: var(--blue); font-size: 12px; }
+    .artwork-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .total { font-weight: 700; color: #111827; }
+    .coupon { font-size: 11px; background: var(--yellow-light); color: var(--yellow); padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+
+    /* ── Status Badge ── */
+    .status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .status-New { background: var(--blue-light); color: var(--blue); }
+    .status-Link-Sent { background: var(--purple-light); color: var(--purple); }
+    .status-Follow-Up-1 { background: var(--yellow-light); color: var(--yellow); }
+    .status-Follow-Up-2 { background: #fff3cd; color: #856404; }
+    .status-Paid { background: var(--green-light); color: var(--green); }
+    .status-No-Response { background: #f3f4f6; color: var(--gray); }
+    .status-Cancelled { background: var(--red-light); color: var(--red); }
+
+    /* ── Follow-up dots ── */
+    .fu-dots { display: flex; gap: 4px; }
+    .fu-dot { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+    .fu-dot.done { background: var(--green); color: #fff; }
+    .fu-dot.pending { background: #e5e7eb; color: var(--gray); }
+    .fu-dot.due { background: var(--red); color: #fff; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+    /* ── Action buttons ── */
+    .actions { display: flex; gap: 6px; }
+    .action-btn { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: #fff; color: #374151; transition: all .12s; white-space: nowrap; }
+    .action-btn:hover { background: var(--gray-light); }
+    .action-btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .action-btn.primary:hover { background: #1749b8; }
+    .action-btn.success { background: var(--green); color: #fff; border-color: var(--green); }
+
+    /* ── Modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal { background: #fff; border-radius: 16px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); transform: translateY(20px); transition: transform .2s; }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { font-size: 16px; font-weight: 700; }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--gray); padding: 4px; border-radius: 6px; }
+    .modal-close:hover { background: var(--gray-light); }
+    .modal-body { padding: 20px 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    .form-input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; }
+    .form-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,219,.1); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    select.form-input { cursor: pointer; }
+
+    /* ── Email Preview ── */
+    .email-preview { background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; max-height: 360px; overflow-y: auto; font-family: Georgia, serif; }
+
+    /* ── Empty State ── */
+    .empty { text-align: center; padding: 60px 20px; color: var(--gray); }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty p { font-size: 14px; }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #1e293b; color: #fff; padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 999; transform: translateY(100px); opacity: 0; transition: all .3s; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: var(--green); }
+    .toast.error { background: var(--red); }
+
+    /* ── Loading ── */
+    .loading { display: flex; justify-content: center; padding: 40px; }
+    .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 768px) {
+      main { padding: 16px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .form-row { grid-template-columns: 1fr; }
+      table { font-size: 12px; }
+      th, td { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>OverstockArt Order Recovery <span>CRM</span></h1>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Order</button>
+    <button class="btn btn-ghost" onclick="exportCSV()">Export CSV</button>
+  </div>
+</header>
+
+<main>
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card blue"><div class="stat-label">Total Leads</div><div class="stat-value" id="stat-total">--</div><div class="stat-sub">All time</div></div>
+    <div class="stat-card green"><div class="stat-label">Recovered</div><div class="stat-value" id="stat-recovered">$--</div><div class="stat-sub">Paid orders</div></div>
+    <div class="stat-card yellow"><div class="stat-label">Pipeline</div><div class="stat-value" id="stat-pipeline">$--</div><div class="stat-sub">Active leads</div></div>
+    <div class="stat-card purple"><div class="stat-label">New</div><div class="stat-value" id="stat-new">--</div><div class="stat-sub">Awaiting contact</div></div>
+    <div class="stat-card red"><div class="stat-label">No Response</div><div class="stat-value" id="stat-noresp">--</div><div class="stat-sub">After Day 7</div></div>
+  </div>
+
+  <!-- Follow-up Alert Bar -->
+  <div class="followup-bar" id="followupBar" style="display:none">
+    <h3>Follow-ups Due:</h3>
+    <button class="fu-badge day1" id="fuDay1Btn" onclick="filterByFollowup(1)" style="display:none">Day 1: <span id="fuDay1Count">0</span> due</button>
+    <button class="fu-badge day3" id="fuDay3Btn" onclick="filterByFollowup(3)" style="display:none">Day 3: <span id="fuDay3Count">0</span> due</button>
+    <button class="fu-badge day7" id="fuDay7Btn" onclick="filterByFollowup(7)" style="display:none">Day 7: <span id="fuDay7Count">0</span> due</button>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <input type="text" class="search-input" placeholder="Search by name, email, artwork, order ID..." id="searchInput" oninput="debounceLoad()" />
+    <select class="filter-select" id="statusFilter" onchange="loadOrders()">
+      <option value="">All Statuses</option>
+      <option value="New">New</option>
+      <option value="Link Sent">Link Sent</option>
+      <option value="Follow-Up 1">Follow-Up 1</option>
+      <option value="Follow-Up 2">Follow-Up 2</option>
+      <option value="Paid">Paid</option>
+      <option value="No Response">No Response</option>
+      <option value="Cancelled">Cancelled</option>
+    </select>
+    <select class="filter-select" id="typeFilter" onchange="loadOrders()">
+      <option value="">All Types</option>
+      <option value="Incomplete Checkout">Incomplete Checkout</option>
+      <option value="Failed Payment">Failed Payment</option>
+    </select>
+    <button class="btn btn-ghost" onclick="clearFilters()" style="background:#e5e7eb;color:#374151;">Clear</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <div class="table-header">
+      <span class="table-title">Recovery Leads</span>
+      <span class="table-count" id="orderCount">Loading...</span>
+    </div>
+    <div id="tableBody">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</main>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="orderModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Add Order</h2>
+      <button class="modal-close" onclick="closeModal('orderModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editOrderId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Order ID *</label>
+          <input class="form-input" id="f_order_id" placeholder="e.g. 105596" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Order Type</label>
+          <select class="form-input" id="f_order_type">
+            <option>Incomplete Checkout</option>
+            <option>Failed Payment</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Customer Name *</label>
+          <input class="form-input" id="f_customer_name" placeholder="Full name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Customer Email *</label>
+          <input class="form-input" id="f_customer_email" type="email" placeholder="email@example.com" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Artwork</label>
+        <input class="form-input" id="f_artwork" placeholder="Full artwork/product name" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Frame</label>
+          <input class="form-input" id="f_frame" placeholder="Frame code or name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Order Total ($)</label>
+          <input class="form-input" id="f_order_total" type="number" step="0.01" placeholder="0.00" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Coupon Code</label>
+          <input class="form-input" id="f_coupon_code" placeholder="e.g. TAKE30" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-input" id="f_status">
+            <option>New</option>
+            <option>Link Sent</option>
+            <option>Follow-Up 1</option>
+            <option>Follow-Up 2</option>
+            <option>Paid</option>
+            <option>No Response</option>
+            <option>Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date Added</label>
+        <input class="form-input" id="f_date_added" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input" id="f_notes" rows="3" placeholder="Internal notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('orderModal')" style="background:#f3f4f6;color:#374151;">Cancel</button>
+      <button class="btn btn-primary" onclick="saveOrder()">Save Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- Status Update Modal -->
+<div class="modal-overlay" id="statusModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2>Update Status</h2>
+      <button class="modal-close" onclick="closeModal('statusModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="statusOrderId" />
+      <div class="form-group">
+        <label class="form-label">New Status</label>
+        <select class="form-input" id="newStatus">
+          <option>New</option>
+          <option>Link Sent</option>
+          <option>Follow-Up 1</option>
+          <option>Follow-Up 2</option>
+          <option>Paid</option>
+          <option>No Response</option>
+          <option>Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input" id="statusNotes" rows="3" placeholder="Optional notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('statusModal')" style="background:#f3f4f6;color:#374151;">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStatus()">Update Status</button>
+    </div>
+  </div>
+</div>
+
+<!-- Email Preview Modal -->
+<div class="modal-overlay" id="emailModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <h2>Email Preview</h2>
+      <button class="modal-close" onclick="closeModal('emailModal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:12px">
+        <strong style="font-size:13px">To:</strong> <span id="emailTo" style="font-size:13px;color:var(--blue)"></span><br>
+        <strong style="font-size:13px">Subject:</strong> <span id="emailSubject" style="font-size:13px"></span>
+      </div>
+      <div class="email-preview" id="emailBody"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('emailModal')" style="background:#f3f4f6;color:#374151;">Close</button>
+      <button class="btn btn-primary" id="markFollowupBtn" onclick="markCurrentFollowup()">Mark as Sent</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let allOrders = [];
+let currentEmailOrderId = null;
+let currentEmailDay = null;
+let debounceTimer = null;
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadStats();
+  loadOrders();
+});
+
+function debounceLoad() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadOrders, 300);
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const stats = await api('/api/stats');
+    document.getElementById('stat-total').textContent = stats.total;
+    document.getElementById('stat-recovered').textContent = '$' + stats.recovered.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('stat-pipeline').textContent = '$' + stats.pending.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const newStat = stats.byStatus.find(s => s.status === 'New');
+    document.getElementById('stat-new').textContent = newStat ? newStat.count : 0;
+    const nrStat = stats.byStatus.find(s => s.status === 'No Response');
+    document.getElementById('stat-noresp').textContent = nrStat ? nrStat.count : 0;
+
+    // Follow-up bar
+    const anyDue = stats.day1Due > 0 || stats.day3Due > 0 || stats.day7Due > 0;
+    document.getElementById('followupBar').style.display = anyDue ? 'flex' : 'none';
+    if (stats.day1Due > 0) {
+      document.getElementById('fuDay1Btn').style.display = 'inline-flex';
+      document.getElementById('fuDay1Count').textContent = stats.day1Due;
+    }
+    if (stats.day3Due > 0) {
+      document.getElementById('fuDay3Btn').style.display = 'inline-flex';
+      document.getElementById('fuDay3Count').textContent = stats.day3Due;
+    }
+    if (stats.day7Due > 0) {
+      document.getElementById('fuDay7Btn').style.display = 'inline-flex';
+      document.getElementById('fuDay7Count').textContent = stats.day7Due;
+    }
+  } catch(e) { console.error(e); }
+}
+
+// ── Orders ─────────────────────────────────────────────────────────────────
+async function loadOrders() {
+  const params = new URLSearchParams();
+  const search = document.getElementById('searchInput').value.trim();
+  const status = document.getElementById('statusFilter').value;
+  const type = document.getElementById('typeFilter').value;
+  if (search) params.set('search', search);
+  if (status) params.set('status', status);
+  if (type) params.set('order_type', type);
+
+  document.getElementById('tableBody').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    allOrders = await api('/api/orders?' + params);
+    renderTable(allOrders);
+  } catch(e) {
+    document.getElementById('tableBody').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><p>Could not load orders. Is the server running?</p></div>';
+  }
+}
+
+function renderTable(orders) {
+  document.getElementById('orderCount').textContent = orders.length + ' order' + (orders.length !== 1 ? 's' : '');
+  if (!orders.length) {
+    document.getElementById('tableBody').innerHTML = '<div class="empty"><div class="empty-icon">📭</div><p>No orders found matching your filters.</p></div>';
+    return;
+  }
+
+  const rows = orders.map(o => {
+    const firstName = o.customer_name.split(' ')[0];
+    const statusClass = 'status-' + (o.status || 'New').replace(/\s+/g, '-');
+    const fu1 = getFuDot(o.followup_day1_sent, 1, o);
+    const fu3 = getFuDot(o.followup_day3_sent, 3, o);
+    const fu7 = getFuDot(o.followup_day7_sent, 7, o);
+    const dateStr = o.date_added ? o.date_added.slice(0,10) : (o.created_at ? o.created_at.slice(0,10) : '--');
+    const coupon = o.coupon_code ? `<span class="coupon">${o.coupon_code}</span>` : '';
+
+    return `<tr>
+      <td class="text-muted">#${o.order_id}</td>
+      <td>
+        <div class="customer-name">${escHtml(o.customer_name)}</div>
+        <div class="customer-email">${escHtml(o.customer_email)}</div>
+      </td>
+      <td><div class="artwork-name" title="${escHtml(o.artwork||'')}">${escHtml(o.artwork||'--')}</div>
+          <div class="text-muted">${escHtml(o.frame||'')}</div></td>
+      <td><div class="total">$${(+o.order_total||0).toFixed(2)}</div>${coupon}</td>
+      <td class="text-muted">${dateStr}</td>
+      <td><span class="status-badge ${statusClass}">${o.status||'New'}</span></td>
+      <td><div class="fu-dots">${fu1}${fu3}${fu7}</div></td>
+      <td>
+        <div class="actions">
+          <button class="action-btn" onclick="openStatusModal('${o.order_id}','${escHtml(o.status||'New')}')">Status</button>
+          <button class="action-btn primary" onclick="openEmailModal('${o.order_id}')">Email</button>
+          <button class="action-btn" onclick="openEditModal('${o.order_id}')">Edit</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tableBody').innerHTML = `<table>
+    <thead><tr>
+      <th>Order</th><th>Customer</th><th>Artwork / Frame</th>
+      <th>Total</th><th>Date</th><th>Status</th><th>Follow-up</th><th>Actions</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function getFuDot(sent, day, order) {
+  if (sent) return `<span class="fu-dot done" title="Day ${day} sent">&#x2713;</span>`;
+  const isDue = isFollowupDue(day, order);
+  if (isDue) return `<span class="fu-dot due" title="Day ${day} due now!">${day}</span>`;
+  return `<span class="fu-dot pending" title="Day ${day} pending">${day}</span>`;
+}
+
+function isFollowupDue(day, order) {
+  const now = new Date();
+  if (day === 1) {
+    if (order.followup_day1_sent) return false;
+    const added = new Date(order.date_added || order.created_at);
+    return (now - added) / 86400000 >= 1;
+  }
+  if (day === 3) {
+    if (!order.followup_day1_sent || order.followup_day3_sent) return false;
+    const sent = new Date(order.followup_day1_date);
+    return (now - sent) / 86400000 >= 3;
+  }
+  if (day === 7) {
+    if (!order.followup_day3_sent || order.followup_day7_sent) return false;
+    const sent = new Date(order.followup_day3_date);
+    return (now - sent) / 86400000 >= 7;
+  }
+  return false;
+}
+
+// ── Email Modal ────────────────────────────────────────────────────────────
+function openEmailModal(orderId) {
+  const order = allOrders.find(o => String(o.order_id) === String(orderId));
+  if (!order) return;
+
+  // Determine which follow-up day
+  let day = 1;
+  if (order.followup_day1_sent && !order.followup_day3_sent) day = 3;
+  else if (order.followup_day3_sent && !order.followup_day7_sent) day = 7;
+
+  currentEmailOrderId = orderId;
+  currentEmailDay = day;
+
+  const firstName = order.customer_name.split(' ')[0];
+  const artworkShort = (order.artwork || 'this piece').split(' ').slice(0, 4).join(' ');
+  const artistLastName = extractArtistLastName(order.artwork);
+  const subject = `${firstName}, your ${artistLastName || artworkShort} is still waiting for you`;
+
+  const couponLine = order.coupon_code
+    ? `I can prepare the order for you personally and send a secure payment link with your ${order.coupon_code} discount already applied, bringing your total to just $${(+order.order_total||0).toFixed(2)} with free shipping.`
+    : `I can prepare the order for you personally and send a secure payment link, bringing your total to just $${(+order.order_total||0).toFixed(2)} with free shipping.`;
+
+  const frameDesc = order.frame ? `with our beautiful ${order.frame} framing` : '';
+  const dayLabel = day === 1 ? 'initial' : day === 3 ? '3-day follow-up' : '7-day final';
+
+  const body = `Hi ${firstName},
+
+I noticed you tried to order ${order.artwork || 'a piece from our collection'}${frameDesc ? ' ' + frameDesc : ''}. First, thank you. Your taste is impeccable. This combination brings timeless artistry into your home in a way that is truly striking.
+
+I also understand that sometimes the checkout process can be a little frustrating. That is on us, and I want to make it effortless for you. ${couponLine} One click, and your ${artworkShort} will be on its way, beautifully framed and ready to transform your space.
+
+Our collectors tell us this piece becomes more than decor. It becomes a daily reminder of something meaningful and beautiful. I would love for you to enjoy that same experience in your home.
+
+Shall I go ahead and prepare that link for you?
+
+Warm regards,
+David`;
+
+  document.getElementById('emailTo').textContent = order.customer_email;
+  document.getElementById('emailSubject').textContent = `[${dayLabel}] ${subject}`;
+  document.getElementById('emailBody').textContent = body;
+  document.getElementById('markFollowupBtn').textContent = `Mark Day ${day} Sent`;
+  openModal('emailModal');
+}
+
+async function markCurrentFollowup() {
+  if (!currentEmailOrderId) return;
+  try {
+    await api(`/api/orders/${currentEmailOrderId}/followup/${currentEmailDay}`, 'POST');
+    closeModal('emailModal');
+    showToast(`Day ${currentEmailDay} follow-up marked sent!`, 'success');
+    loadOrders();
+    loadStats();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function extractArtistLastName(artwork) {
+  if (!artwork) return '';
+  const byMatch = artwork.match(/ by ([A-Z][a-z]+ ([A-Z][a-z]+))/);
+  if (byMatch) return byMatch[2];
+  return '';
+}
+
+// ── Status Modal ───────────────────────────────────────────────────────────
+function openStatusModal(orderId, currentStatus) {
+  document.getElementById('statusOrderId').value = orderId;
+  document.getElementById('newStatus').value = currentStatus;
+  document.getElementById('statusNotes').value = '';
+  openModal('statusModal');
+}
+
+async function saveStatus() {
+  const orderId = document.getElementById('statusOrderId').value;
+  const status = document.getElementById('newStatus').value;
+  const notes = document.getElementById('statusNotes').value;
+  try {
+    await api(`/api/orders/${orderId}/status`, 'PATCH', { status, notes });
+    closeModal('statusModal');
+    showToast('Status updated!', 'success');
+    loadOrders();
+    loadStats();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Add/Edit Modal ─────────────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = 'Add Order';
+  document.getElementById('editOrderId').value = '';
+  ['order_id','customer_name','customer_email','artwork','frame','order_total','coupon_code','notes'].forEach(f => {
+    const el = document.getElementById('f_'+f);
+    if (el) el.value = '';
+  });
+  document.getElementById('f_status').value = 'New';
+  document.getElementById('f_order_type').value = 'Incomplete Checkout';
+  document.getElementById('f_date_added').value = new Date().toISOString().slice(0,10);
+  openModal('orderModal');
+}
+
+async function openEditModal(orderId) {
+  const order = allOrders.find(o => String(o.order_id) === String(orderId));
+  if (!order) return;
+  document.getElementById('modalTitle').textContent = 'Edit Order #' + orderId;
+  document.getElementById('editOrderId').value = orderId;
+  document.getElementById('f_order_id').value = order.order_id || '';
+  document.getElementById('f_customer_name').value = order.customer_name || '';
+  document.getElementById('f_customer_email').value = order.customer_email || '';
+  document.getElementById('f_artwork').value = order.artwork || '';
+  document.getElementById('f_frame').value = order.frame || '';
+  document.getElementById('f_order_total').value = order.order_total || '';
+  document.getElementById('f_coupon_code').value = order.coupon_code || '';
+  document.getElementById('f_status').value = order.status || 'New';
+  document.getElementById('f_order_type').value = order.order_type || 'Incomplete Checkout';
+  document.getElementById('f_notes').value = order.notes || '';
+  document.getElementById('f_date_added').value = (order.date_added || '').slice(0,10);
+  openModal('orderModal');
+}
+
+async function saveOrder() {
+  const order = {
+    order_id: document.getElementById('f_order_id').value.trim(),
+    customer_name: document.getElementById('f_customer_name').value.trim(),
+    customer_email: document.getElementById('f_customer_email').value.trim(),
+    artwork: document.getElementById('f_artwork').value.trim(),
+    frame: document.getElementById('f_frame').value.trim(),
+    order_total: parseFloat(document.getElementById('f_order_total').value) || 0,
+    coupon_code: document.getElementById('f_coupon_code').value.trim(),
+    status: document.getElementById('f_status').value,
+    order_type: document.getElementById('f_order_type').value,
+    notes: document.getElementById('f_notes').value.trim(),
+    date_added: document.getElementById('f_date_added').value || new Date().toISOString().slice(0,10),
+    payment_link: ''
+  };
+  if (!order.order_id || !order.customer_name || !order.customer_email) {
+    showToast('Order ID, Name, and Email are required', 'error'); return;
+  }
+  try {
+    await api('/api/orders', 'POST', order);
+    closeModal('orderModal');
+    showToast('Order saved!', 'success');
+    loadOrders();
+    loadStats();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ── Filter helpers ─────────────────────────────────────────────────────────
+function clearFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('statusFilter').value = '';
+  document.getElementById('typeFilter').value = '';
+  loadOrders();
+}
+
+function filterByFollowup(day) {
+  // Just show New/Link Sent status depending on day
+  const statuses = { 1: 'New', 3: 'Link Sent', 7: 'Follow-Up 1' };
+  document.getElementById('statusFilter').value = statuses[day] || '';
+  loadOrders();
+}
+
+// ── Export CSV ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!allOrders.length) { showToast('No orders to export', 'error'); return; }
+  const headers = ['Order ID','Customer Name','Email','Artwork','Frame','Total','Coupon','Status','Type','Date Added','Day 1 Sent','Day 3 Sent','Day 7 Sent','Notes'];
+  const rows = allOrders.map(o => [
+    o.order_id, o.customer_name, o.customer_email, o.artwork, o.frame,
+    o.order_total, o.coupon_code, o.status, o.order_type, o.date_added,
+    o.followup_day1_sent ? 'Yes' : 'No',
+    o.followup_day3_sent ? 'Yes' : 'No',
+    o.followup_day7_sent ? 'Yes' : 'No',
+    o.notes
+  ].map(v => `"${String(v||'').replace(/"/g,'""')}"`));
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `overstock-recovery-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── Modal helpers ──────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── API helper ─────────────────────────────────────────────────────────────
+async function api(url, method='GET', body=null) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
