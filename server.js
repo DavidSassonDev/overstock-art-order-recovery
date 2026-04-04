@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const { upsertOrder, updateStatus, getAllOrders, getOrder, markFollowupSent, getStats, db } = require('./database');
 
 const app = express();
@@ -11,44 +12,32 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── Auto-restore seed data if database is empty ────────────────────────────────────────────
-// Runs on every startup. Safe: uses INSERT OR IGNORE so existing statuses are never overwritten.
+// Auto-restore seed data if database is empty on startup
 function restoreSeedIfEmpty() {
   try {
     const stats = getStats();
-    if (stats.total > 0) { console.log('Database has ' + stats.total + ' orders. Skipping auto-restore.'); return; }
-    console.log('Database is empty — restoring seed data...');
-    const content = fs.readFileSync(path.join(__dirname, 'seed.js'), 'utf8');
-    const match = content.match(/const orders\s*=\s*(\[[\s\S]*\n\]);/);
-    if (!match) { console.error('Auto-restore: could not parse orders array in seed.js'); return; }
-    const orders = eval(match[1]);
-    const stmt = db.prepare(`INSERT OR IGNORE INTO orders
-      (order_id, customer_name, customer_email, artwork, frame, order_total, coupon_code,
-       payment_link, order_type, status, notes, date_added)
-      VALUES (@order_id, @customer_name, @customer_email, @artwork, @frame, @order_total,
-              @coupon_code, @payment_link, @order_type, @status, @notes, @date_added)`);
-    let count = 0;
-    const defaults = { payment_link: '', order_type: 'Incomplete Checkout', status: 'New', notes: '', date_added: new Date().toISOString().slice(0, 10) };
-    for (const o of orders) { stmt.run({ ...defaults, ...o }); count++; }
-    // Restore failed payment recovery orders
-    const fpOrders = [
-      { order_id: '105613', customer_name: 'Nick Thomas', customer_email: 'nick_thomas77@hotmail.com', artwork: 'VG573-GALWRP18X22', frame: '', order_total: 190.80, coupon_code: 'TAKE30', payment_link: 'https://square.link/u/mNxd5L9S', order_type: 'Failed Payment', status: 'New', notes: 'Coupon TAKE30 (saved $0.00). Shipping waived. Square Order ID: JbDSiLhQ1EuF3BL14dc5kEBBbLNZY', date_added: '2026-04-04' },
-      { order_id: '105612', customer_name: 'Nick Thomas', customer_email: 'nick_thomas77@hotmail.com', artwork: 'OR5749, GALWRP18X22, VG1084, PB7467, GALWRP18X22', frame: '', order_total: 520.38, coupon_code: 'TAKE30', payment_link: 'https://square.link/u/wVRUlPDU', order_type: 'Failed Payment', status: 'New', notes: 'Coupon TAKE30 (saved $223.02). Shipping waived. Square Order ID: Z5sVEjRIwbUSvGwEYZkBJzgVpxLZY', date_added: '2026-04-04' }
-    ];
-    for (const o of fpOrders) { stmt.run(o); count++; }
-    console.log('Auto-restore complete: ' + count + ' orders restored.');
+    if (stats.total > 0) {
+      console.log('Database has ' + stats.total + ' orders. Skipping auto-restore.');
+      return;
+    }
+    console.log('Database is empty. Running seed.js to restore orders...');
+    execSync('node seed.js', { cwd: __dirname, stdio: 'inherit' });
+    // Also restore the two failed-payment recovery orders
+    var stmt = db.prepare('INSERT OR IGNORE INTO orders (order_id, customer_name, customer_email, artwork, frame, order_total, coupon_code, payment_link, order_type, status, notes, date_added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    stmt.run('105613','Nick Thomas','nick_thomas77@hotmail.com','VG573-GALWRP18X22','',190.80,'TAKE30','https://square.link/u/mNxd5L9S','Failed Payment','New','Coupon TAKE30 (saved $0.00). Shipping waived. Square Order ID: JbDSiLhQ1EuF3BL14dc5kEBBbLNZY','2026-04-04');
+    stmt.run('105612','Nick Thomas','nick_thomas77@hotmail.com','OR5749, GALWRP18X22, VG1084, PB7467, GALWRP18X22','',520.38,'TAKE30','https://square.link/u/wVRUlPDU','Failed Payment','New','Coupon TAKE30 (saved $223.02). Shipping waived. Square Order ID: Z5sVEjRIwbUSvGwEYZkBJzgVpxLZY','2026-04-04');
+    var newStats = getStats();
+    console.log('Auto-restore complete: ' + newStats.total + ' orders restored.');
   } catch (e) {
     console.error('Auto-restore error:', e.message);
   }
 }
 restoreSeedIfEmpty();
 
-// ── Stats ──────────────────────────────────────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   try { res.json(getStats()); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Get all orders ───────────────────────────────────────────────────────────────────
 app.get('/api/orders', (req, res) => {
   try {
     const { status, search, order_type } = req.query;
@@ -56,7 +45,6 @@ app.get('/api/orders', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Get single order ───────────────────────────────────────────────────────────────────
 app.get('/api/orders/:id', (req, res) => {
   try {
     const order = getOrder(req.params.id);
@@ -65,7 +53,6 @@ app.get('/api/orders/:id', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Upsert order ─────────────────────────────────────────────────────────────────────────
 app.post('/api/orders', (req, res) => {
   try {
     const result = upsertOrder(req.body);
@@ -73,7 +60,6 @@ app.post('/api/orders', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Update status ──────────────────────────────────────────────────────────────────────────
 app.patch('/api/orders/:id/status', (req, res) => {
   try {
     const { status, notes } = req.body;
@@ -82,7 +68,6 @@ app.patch('/api/orders/:id/status', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Mark follow-up sent ────────────────────────────────────────────────────────────────────────
 app.post('/api/orders/:id/followup/:day', (req, res) => {
   try {
     const day = parseInt(req.params.day);
@@ -92,7 +77,6 @@ app.post('/api/orders/:id/followup/:day', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Bulk import orders ────────────────────────────────────────────────────────────────────────
 app.post('/api/orders/bulk', (req, res) => {
   try {
     const orders = req.body;
@@ -103,7 +87,6 @@ app.post('/api/orders/bulk', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Square Webhook ─────────────────────────────────────────────────────────────────────────
 app.post('/webhooks/square', (req, res) => {
   try {
     const event = req.body;
@@ -130,11 +113,10 @@ app.post('/webhooks/square', (req, res) => {
   }
 });
 
-// ── Serve frontend for all other routes ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`OverstockArt Order Recovery running on http://localhost:${PORT}`);
+  console.log('OverstockArt Order Recovery running on http://localhost:' + PORT);
 });
