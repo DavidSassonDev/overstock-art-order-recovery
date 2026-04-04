@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { upsertOrder, updateStatus, getAllOrders, getOrder, markFollowupSent, getStats } = require('./database');
+const { upsertOrder, updateStatus, getAllOrders, getOrder, markFollowupSent, getStats, db } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ââ Stats ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Stats ──────────────────────────────────────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   try {
     res.json(getStats());
@@ -19,7 +19,7 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
-// ââ Get all orders âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Get all orders ───────────────────────────────────────────────────────────────────
 app.get('/api/orders', (req, res) => {
   try {
     const { status, search, order_type } = req.query;
@@ -29,7 +29,7 @@ app.get('/api/orders', (req, res) => {
   }
 });
 
-// ââ Get single order âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Get single order ───────────────────────────────────────────────────────────────────
 app.get('/api/orders/:id', (req, res) => {
   try {
     const order = getOrder(req.params.id);
@@ -40,7 +40,7 @@ app.get('/api/orders/:id', (req, res) => {
   }
 });
 
-// ââ Upsert order âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Upsert order ─────────────────────────────────────────────────────────────────────────
 app.post('/api/orders', (req, res) => {
   try {
     const result = upsertOrder(req.body);
@@ -50,7 +50,7 @@ app.post('/api/orders', (req, res) => {
   }
 });
 
-// ââ Update status ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Update status ──────────────────────────────────────────────────────────────────────────
 app.patch('/api/orders/:id/status', (req, res) => {
   try {
     const { status, notes } = req.body;
@@ -61,7 +61,7 @@ app.patch('/api/orders/:id/status', (req, res) => {
   }
 });
 
-// ââ Mark follow-up sent ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Mark follow-up sent ────────────────────────────────────────────────────────────────────────
 app.post('/api/orders/:id/followup/:day', (req, res) => {
   try {
     const day = parseInt(req.params.day);
@@ -73,7 +73,7 @@ app.post('/api/orders/:id/followup/:day', (req, res) => {
   }
 });
 
-// ââ Bulk import orders âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Bulk import orders ────────────────────────────────────────────────────────────────────────
 app.post('/api/orders/bulk', (req, res) => {
   try {
     const orders = req.body;
@@ -89,7 +89,43 @@ app.post('/api/orders/bulk', (req, res) => {
   }
 });
 
-// ââ Serve frontend for all other routes âââââââââââââââââââââââââââââââââââ
+// ── Square Webhook ─────────────────────────────────────────────────────────────────────────
+// Receives payment.completed and order.updated events from Square
+app.post('/webhooks/square', (req, res) => {
+  try {
+    const event = req.body;
+    let squareOrderId = null;
+
+    if (event.type === 'payment.completed' || event.type === 'payment.updated') {
+      const payment = event.data && event.data.object && event.data.object.payment;
+      if (payment && payment.status === 'COMPLETED' && payment.order_id) {
+        squareOrderId = payment.order_id;
+      }
+    }
+
+    if (event.type === 'order.updated') {
+      const obj = event.data && event.data.object && event.data.object.order_updated;
+      if (obj && obj.state === 'COMPLETED' && obj.order_id) {
+        squareOrderId = obj.order_id;
+      }
+    }
+
+    if (squareOrderId) {
+      const row = db.prepare("SELECT * FROM orders WHERE notes LIKE ? AND status != 'Paid'").get('%' + squareOrderId + '%');
+      if (row) {
+        updateStatus(row.order_id, 'Paid', 'Payment received via Square on ' + new Date().toISOString() + '. Square Order: ' + squareOrderId);
+        console.log('Payment received for order ' + row.order_id);
+      }
+    }
+
+    res.json({ received: true });
+  } catch (e) {
+    console.error('Square webhook error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Serve frontend for all other routes ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
